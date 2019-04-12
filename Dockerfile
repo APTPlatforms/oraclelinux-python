@@ -32,93 +32,112 @@ ARG SYSTEM_DEPS="bzip2 gnupg2 gzip tar tzdata which xz"
 ARG PYTHON_DEPS="bzip2-libs expat gdbm glibc keyutils-libs krb5-libs libcom_err libffi libselinux \
                  libuuid ncurses-libs nss-softokn-freebl openssl-libs pcre readline sqlite \
                  xz-libs zlib"
+ARG SQLITE_DEPS="tcl"
 
 # Update the system and install runtime dependencies
 RUN : \
  && set -ex \
  && yum clean all \
  && yum -y upgrade \
- && yum -y install $SYSTEM_DEPS $PYTHON_DEPS \
+ && yum -y install $SYSTEM_DEPS $PYTHON_DEPS $SQLITE_DEPS \
  && yum clean all \
  && rm -rf /var/cache/yum/ /var/lib/yum/repos/*
 # base }}}
 
 
-# {{{ python-build
-# Here we build python. This makes a really dirty build environment, so we make it its own stage
-# to avoid cleanup as much as possible. `COPY /usr/local` from this image to get python into the
-# runtime image. This stage is not intended for runtime consumption - it's a cache staged only.
-# NOTE: Don't forget to `ldconfig` in the COPY destination later.
-FROM base AS python-build
+# {{{ builder
+# Here we build python and its dependencies. This makes a really dirty build
+# environment, so we make it its own stage to avoid cleanup as much as
+# possible. `COPY /usr/local` from this image to get python into the runtime
+# image. This stage is not intended for runtime consumption - it's a cache
+# staged only.  NOTE: Don't forget to `ldconfig` in the COPY destination later.
+FROM base AS builder
 
-ARG PYTHON_VERSION=3.7.3
-ARG PYTHON_GPG_KEY=0D96DF4D4110E5C43FBFB17F2D347EA6AA65421D
 ARG PYTHON_PIP_VERSION=19.0.3
+ARG PYTHON_VERSION=3.7.3
+ARG pybasever=3.7
+ARG pyshortver=37
+ARG _bindir=/usr/local/bin
+ARG _libdir=/usr/local/lib
+ARG pylibdir=${_libdir}/python${pybasever}
+ARG dynload_dir=${pylibdir}/lib-dynload
+ARG ABIFLAGS_optimized=m
+ARG _arch=x86_64
+ARG _gnu=-gnu
+ARG bytecode_suffixes=.cpython-${pyshortver}*.pyc
+ARG SOABI_optimized=cpython-${pyshortver}${ABIFLAGS_optimized}-${_arch}-linux${_gnu}
 ARG PYTHON_BUILD_DEPS="gcc gcc-c++ bzip2-devel glibc-devel expat-devel libffi-devel gdbm-devel \
                        xz-devel ncurses-devel readline-devel sqlite-devel openssl-devel make \
                        tk-devel libuuid-devel zlib-devel"
+ARG SQLITE_BUILD_DEPS="autoconf file pkgconfig ncurses-devel readline-devel glibc-devel tcl-devel"
+ARG SQLITE_VERSION=3270200
 
-ENV PATH=/usr/local/bin:$PATH
+ENV PATH=$_bindir:$PATH
 
-# Install python build dependencies
+WORKDIR /usr/src
+
+# Install build dependencies
 RUN : \
  && set -ex \
  && yum clean all \
- && yum -y install $PYTHON_BUILD_DEPS
+ && yum -y install $PYTHON_BUILD_DEPS $SQLITE_BUILD_DEPS
 
-# Download python source
+# Install SQLite
 RUN : \
  && set -ex \
- && curl -sSLo python.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz" \
- && curl -sSLo python.tar.xz.asc "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz.asc"
+ && curl -sSLo sqlite.tar.gz "https://www.sqlite.org/2019/sqlite-autoconf-${SQLITE_VERSION}.tar.gz" \
+ && mkdir -p /usr/src/sqlite \
+ && tar -xzC /usr/src/sqlite --strip-components=1 -f sqlite.tar.gz \
+ && rm sqlite.tar.gz
 
-# Validate GPG signature of download
+# Build and install SQLite
 RUN : \
  && set -ex \
- && export GNUPGHOME="$(mktemp -d)" \
- && gpg --batch --keyserver ha.pool.sks-keyservers.net --recv-keys "$PYTHON_GPG_KEY" \
- && gpg --batch --verify python.tar.xz.asc python.tar.xz \
- && { command -v gpgconf > /dev/null && gpgconf --kill all || :; } \
- && rm -rf "$GNUPGHOME" python.tar.xz.asc
+ && cd /usr/src/sqlite \
+ && sh ./configure \
+         --disable-static \
+         --enable-silent-rules \
+ && make -j $(nproc) \
+ && make install
 
 # Extract python source
 RUN : \
  && set -ex \
+ && curl -sSLo python.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz" \
  && mkdir -p /usr/src/python \
  && tar -xJC /usr/src/python --strip-components=1 -f python.tar.xz \
  && rm python.tar.xz
 
-# Build and install python. , run ldconfig to get the libraries in LD_LIBRARY_PATH
+# Build and install python. Run ldconfig to get the libraries in LD_LIBRARY_PATH
 # NOTE: Don't forget to `ldconfig` in the COPY destination later.
 RUN : \
  && set -ex \
  && cd /usr/src/python \
- && ./configure \
-      --quiet \
-      --enable-shared \
-      --enable-loadable-sqlite-extensions \
+ && sh ./configure \
+         --enable-ipv6 \
+         --enable-shared \
+         --with-dbmliborder=gdbm:ndbm:bdb \
+         --with-system-expat \
+         --enable-loadable-sqlite-extensions \
+         --without-ensurepip \
+         --with-lto \
 # TODO: Enable this when ready for production and caching is a real thing
-#     --enable-optimizations \
-# TODO: Does LTO work with PGO? We'll try later.
-      --with-lto \
-      --with-system-expat \
-      --without-ensurepip \
- && make --quiet -j "$(nproc)" \
+#        --enable-optimizations \
+ && make -j "$(nproc)" \
  && make install
 
 # Make sure python3 runs. If anything fails silently, this should catch it by throwing a runtime error
 # NOTE: This ldconfig is only for this stage - it doesn't carryover.
 RUN : \
  && set -ex \
- && echo /usr/local/lib >/etc/ld.so.conf.d/usr-local.conf \
+ && echo ${_libdir} >/etc/ld.so.conf.d/usr-local.conf \
  && ldconfig \
  && python3 --version
 
 # make some useful symlinks that are expected to exist
 RUN : \
  && set -ex \
- && cd /usr/local/bin \
- && ln -s idle3 idle \
+ && cd ${_bindir} \
  && ln -s pydoc3 pydoc \
  && ln -s python3 python \
  && ln -s python3-config python-config
@@ -135,36 +154,55 @@ RUN : \
  && pip --version \
  && rm -f get-pip.py
 
-# Nuke test directories and precompiled object code
+# Cleanup files that we don't want to have in the final image
 RUN : \
  && set -ex \
- && find /usr/local -depth \
-      \( \
-        \( -type d -a \( -name test -o -name tests \) \) \
-        -o \
-        \( -type f -a \( -name '*.py[co]' \) \) \
-       \) -exec rm -rf '{}' +
+# %files libs
+ && rm -rf \
+      ${pylibdir}/lib2to3/tests \
+      ${pylibdir}/distutils/command/wininst-*.exe \
+      ${pylibdir}/turtle.py \
+      ${pylibdir}/__pycache__/turtle*${bytecode_suffixes} \
+# %files idle
+      ${_bindir}/idle* \
+      ${pylibdir}/idlelib \
+# %files tkinter
+      ${pylibdir}/tkinter \
+      ${dynload_dir}/_tkinter.${SOABI_optimized}.so \
+      ${pylibdir}/turtledemo \
+# %files test
+      ${pylibdir}/ctypes/test \
+      ${pylibdir}/distutils/test \
+      ${pylibdir}/sqlite3/test \
+      ${pylibdir}/test \
+      ${dynload_dir}/_ctypes_test.${SOABI_optimized}.so \
+      ${dynload_dir}/_testbuffer.${SOABI_optimized}.so \
+      ${dynload_dir}/_testcapi.${SOABI_optimized}.so \
+      ${dynload_dir}/_testimportmultiple.${SOABI_optimized}.so \
+      ${pylibdir}/tkinter/test \
+      ${pylibdir}/unittest/test \
+# Python bytecode
+ && find ${pylibdir} -type d -name __pycache__ -exec rm -rf '{}' +
 # }}}
 
 
 # {{{ python-oracle
 # This image has the real, ready-to-run python installed in /usr/local. It copies the results of
-# the python-build stage and makes it ready for action.
+# the builder stage and makes it ready for action.
 # NOTE: We didn't forget to `ldconfig` like we were told.
 FROM base AS python-oracle
 
 ARG ORA_VERSION=18.5
 
-ENV PATH=/usr/local/bin:$PATH:/usr/lib/oracle/${ORA_VERSION}/client64/bin
+ENV PATH=${_bin}:$PATH:/usr/lib/oracle/${ORA_VERSION}/client64/bin
 
-COPY --from=python-build /etc/ld.so.conf.d/usr-local.conf /etc/ld.so.conf.d/usr-local.conf
-COPY --from=python-build /usr/local/ /usr/local/
+COPY --from=builder /etc/ld.so.conf.d/usr-local.conf /etc/ld.so.conf.d/usr-local.conf
+COPY --from=builder /usr/local/ /usr/local/
 
 # Run ldconfig to get /usr/local/lib into the system LD_LIBRARY_PATH
 # Install the Oracle Instant Client Libraries
 RUN : \
  && set -ex \
- && ldconfig \
  && yum clean all \
  && curl -sSLo /etc/yum.repos.d/public-yum-ol7.repo https://yum.oracle.com/public-yum-ol7.repo \
  && yum-config-manager --enable ol7_oracle_instantclient \
