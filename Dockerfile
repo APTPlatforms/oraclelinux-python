@@ -159,7 +159,6 @@ RUN : \
  && set -ex \
 # %files libs
  && rm -rf \
-      ${pylibdir}/lib2to3/tests \
       ${pylibdir}/distutils/command/wininst-*.exe \
       ${pylibdir}/turtle.py \
       ${pylibdir}/__pycache__/turtle*${bytecode_suffixes} \
@@ -173,6 +172,7 @@ RUN : \
 # %files test
       ${pylibdir}/ctypes/test \
       ${pylibdir}/distutils/test \
+      ${pylibdir}/lib2to3/tests \
       ${pylibdir}/sqlite3/test \
       ${pylibdir}/test \
       ${dynload_dir}/_ctypes_test.${SOABI_optimized}.so \
