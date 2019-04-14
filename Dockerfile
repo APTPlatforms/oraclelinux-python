@@ -113,16 +113,15 @@ RUN : \
 RUN : \
  && set -ex \
  && cd /usr/src/python \
- && sh ./configure \
+ && CXX="/usr/bin/g++" sh ./configure \
          --enable-ipv6 \
          --enable-shared \
          --with-dbmliborder=gdbm:ndbm:bdb \
          --with-system-expat \
          --enable-loadable-sqlite-extensions \
          --without-ensurepip \
+         --enable-optimizations \
          --with-lto \
-# TODO: Enable this when ready for production and caching is a real thing
-#        --enable-optimizations \
  && make -j "$(nproc)" \
  && make install
 
