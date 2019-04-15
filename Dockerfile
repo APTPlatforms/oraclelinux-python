@@ -170,7 +170,7 @@ RUN : \
       ${pylibdir}/turtledemo \
 # %files test
       ${pylibdir}/ctypes/test \
-      ${pylibdir}/distutils/test \
+      ${pylibdir}/distutils/tests \
       ${pylibdir}/lib2to3/tests \
       ${pylibdir}/sqlite3/test \
       ${pylibdir}/test \
