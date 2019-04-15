@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -eu
+source $(dirname $0)/../.argfile
+
+docker pull ${BASE}
+
+docker pull ${DOCKER_REPO}:base || true
+docker build \
+    --cache-from ${BASE} \
+    --cache-from ${DOCKER_REPO}:base \
+    -f ${DOCKERFILE_PATH} \
+    --target base \
+    --tag ${DOCKER_REPO}:base .
+docker push ${DOCKER_REPO}:base
+
+docker pull ${DOCKER_REPO}:builder || true
+docker build \
+    --cache-from ${BASE} \
+    --cache-from ${DOCKER_REPO}:base \
+    --cache-from ${DOCKER_REPO}:builder \
+    --build-arg PYTHON_VERSION=${PYTHON_VERSION} \
+    --build-arg PYTHON_PIP_VERSION=${PYTHON_PIP_VERSION} \
+    -f ${DOCKERFILE_PATH} \
+    --target builder \
+    --tag ${DOCKER_REPO}:builder .
+docker push ${DOCKER_REPO}:builder
