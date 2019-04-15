@@ -190,6 +190,8 @@ RUN : \
 # the builder stage and makes it ready for action.
 # NOTE: We didn't forget to `ldconfig` like we were told.
 FROM base AS python-oracle
+LABEL vendor="Apt Platform Technologies, Inc." \
+      maintainer="Chris Cosby <chris.cosby@aptplatforms.com>"
 
 ARG ORA_VERSION=18.5
 
