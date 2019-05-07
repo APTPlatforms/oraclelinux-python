@@ -15,6 +15,10 @@ ARG PYPI_DEPS=""
 # work of removing everything in a big long shell command.
 FROM oraclelinux:7-slim AS base
 
+# http://bugs.python.org/issue19846
+# > At the moment, setting "LANG=C" on a Linux system *fundamentally breaks Python 3*, and that's not OK.
+ENV LANG C.UTF-8
+
 # These are base needs. They are good to have and don't appreciably increase the image size.
 ARG SYSTEM_DEPS="bzip2 gnupg2 gzip tar tzdata which xz"
 
