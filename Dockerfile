@@ -211,7 +211,7 @@ RUN : \
  && yum clean all \
  && curl -sSLo /etc/yum.repos.d/public-yum-ol7.repo https://yum.oracle.com/public-yum-ol7.repo \
  && yum-config-manager --enable ol7_oracle_instantclient \
- && yum -y install "oracle-instantclient${ORA_VERSION}-basiclite" \
+ && yum -y install oracle-instantclient${ORA_VERSION}-basic oracle-instantclient${ORA_VERSION}-sqlplus \
  && echo /usr/lib/oracle/${ORA_VERSION}/client64/lib >/etc/ld.so.conf.d/oracle-instantclient${ORA_VERSION}.conf \
  && ldconfig \
  && yum clean all \
