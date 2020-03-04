@@ -7,6 +7,9 @@
 # in a very clean runtime image that has as few unintended extras as possible.
 ARG PYPI_BUILD_DEPS="gcc gcc-c++"
 ARG PYPI_DEPS=""
+ARG PYTHON_VERSION=3.7.6
+ARG PYTHON_PIP_VERSION=20.0.2
+ARG ORA_VERSION=19.5
 
 
 # {{{ base
@@ -14,10 +17,6 @@ ARG PYPI_DEPS=""
 # This image needs to be squeaky clean when done, thus all of the rolling back and the way-too-much
 # work of removing everything in a big long shell command.
 FROM oraclelinux:7-slim AS base
-
-# http://bugs.python.org/issue19846
-# > At the moment, setting "LANG=C" on a Linux system *fundamentally breaks Python 3*, and that's not OK.
-ENV LANG C.UTF-8
 
 # These are base needs. They are good to have and don't appreciably increase the image size.
 ARG SYSTEM_DEPS="bzip2 gnupg2 gzip tar tzdata which xz"
@@ -49,6 +48,29 @@ RUN : \
 # base }}}
 
 
+# {{{ oracle-base
+# This image has the Oracle client libraries installed. No python yet.
+FROM base AS oracle-base
+
+ARG ORA_VERSION
+
+ENV PATH=${_bin}:$PATH:/usr/lib/oracle/${ORA_VERSION}/client64/bin
+
+# Run ldconfig to get /usr/local/oracle/*/client64/lib into the system LD_LIBRARY_PATH
+# Install the Oracle Instant Client Libraries
+RUN : \
+ && set -ex \
+ && yum clean all \
+ && curl -sSLo /etc/yum.repos.d/public-yum-ol7.repo https://yum.oracle.com/public-yum-ol7.repo \
+ && yum-config-manager --enable ol7_oracle_instantclient \
+ && yum -y install oracle-instantclient${ORA_VERSION}-basic oracle-instantclient${ORA_VERSION}-sqlplus \
+ && echo /usr/lib/oracle/${ORA_VERSION}/client64/lib >/etc/ld.so.conf.d/oracle-instantclient${ORA_VERSION}.conf \
+ && ldconfig \
+ && yum clean all \
+ && rm -rf /var/cache/yum/ /var/lib/yum/repos/*
+# }}}
+
+
 # {{{ builder
 # Here we build python and its dependencies. This makes a really dirty build
 # environment, so we make it its own stage to avoid cleanup as much as
@@ -57,8 +79,8 @@ RUN : \
 # staged only.  NOTE: Don't forget to `ldconfig` in the COPY destination later.
 FROM base AS builder
 
-ARG PYTHON_PIP_VERSION=19.0.3
-ARG PYTHON_VERSION=3.7.3
+ARG PYTHON_PIP_VERSION
+ARG PYTHON_VERSION
 ARG pybasever=3.7
 ARG pyshortver=37
 ARG _bindir=/usr/local/bin
@@ -74,7 +96,7 @@ ARG PYTHON_BUILD_DEPS="gcc gcc-c++ bzip2-devel glibc-devel expat-devel libffi-de
                        xz-devel ncurses-devel readline-devel sqlite-devel openssl-devel make \
                        tk-devel libuuid-devel zlib-devel"
 ARG SQLITE_BUILD_DEPS="autoconf file pkgconfig ncurses-devel readline-devel glibc-devel tcl-devel"
-ARG SQLITE_VERSION=3270200
+ARG SQLITE_VERSION=3290000
 
 ENV PATH=$_bindir:$PATH
 
@@ -133,7 +155,7 @@ RUN : \
 # NOTE: This ldconfig is only for this stage - it doesn't carryover.
 RUN : \
  && set -ex \
- && echo ${_libdir} >/etc/ld.so.conf.d/usr-local.conf \
+ && echo ${_libdir} >/etc/ld.so.conf.d/usr-local-py3.conf \
  && ldconfig \
  && python3 --version
 
@@ -192,31 +214,12 @@ RUN : \
 # {{{ python-oracle
 # This image has the real, ready-to-run python installed in /usr/local. It copies the results of
 # the builder stage and makes it ready for action.
-# NOTE: We didn't forget to `ldconfig` like we were told.
-FROM base AS python-oracle
+FROM oracle-base AS python-oracle
 LABEL vendor="Apt Platform Technologies, Inc." \
       maintainer="Chris Cosby <chris.cosby@aptplatforms.com>"
-
-ARG ORA_VERSION=18.5
-
-ENV PATH=${_bin}:$PATH:/usr/lib/oracle/${ORA_VERSION}/client64/bin
-
-COPY --from=builder /etc/ld.so.conf.d/usr-local.conf /etc/ld.so.conf.d/usr-local.conf
+COPY --from=builder /etc/ld.so.conf.d/usr-local-py3.conf /etc/ld.so.conf.d/usr-local-py3.conf
 COPY --from=builder /usr/local/ /usr/local/
-
-# Run ldconfig to get /usr/local/lib into the system LD_LIBRARY_PATH
-# Install the Oracle Instant Client Libraries
-RUN : \
- && set -ex \
- && yum clean all \
- && curl -sSLo /etc/yum.repos.d/public-yum-ol7.repo https://yum.oracle.com/public-yum-ol7.repo \
- && yum-config-manager --enable ol7_oracle_instantclient \
- && yum -y install oracle-instantclient${ORA_VERSION}-basic oracle-instantclient${ORA_VERSION}-sqlplus \
- && echo /usr/lib/oracle/${ORA_VERSION}/client64/lib >/etc/ld.so.conf.d/oracle-instantclient${ORA_VERSION}.conf \
- && ldconfig \
- && yum clean all \
- && rm -rf /var/cache/yum/ /var/lib/yum/repos/*
-
+RUN ldconfig
 ENTRYPOINT []
 CMD ["python3"]
 # }}}

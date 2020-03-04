@@ -3,5 +3,6 @@
 set -eu
 source $(dirname $0)/../.argfile
 
+echo "TAG: ${IMAGE_NAME} -> ${DOCKER_REPO}:${VERSION}"
 docker tag ${IMAGE_NAME} ${DOCKER_REPO}:${VERSION}
 docker push ${DOCKER_REPO}:${VERSION}

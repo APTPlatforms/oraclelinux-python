@@ -3,15 +3,22 @@
 set -eu
 source $(dirname $0)/../.argfile
 
+export DOCKER_BUILDKIT=1
+
 docker pull ${BASE} || true
 docker pull ${DOCKER_REPO}:base || true
+docker pull ${DOCKER_REPO}:oracle-base || true
 docker pull ${DOCKER_REPO}:builder || true
 docker pull ${DOCKER_REPO}:latest || true
+
+echo "BUILD: ${DOCKER_REPO}:latest"
 docker build \
     --cache-from ${BASE} \
     --cache-from ${DOCKER_REPO}:base \
+    --cache-from ${DOCKER_REPO}:oracle-base \
     --cache-from ${DOCKER_REPO}:builder \
     --cache-from ${DOCKER_REPO}:latest \
+    --build-arg BUILDKIT_INLINE_CACHE=1 \
     --build-arg ORA_VERSION=${ORA_VERSION} \
     -f ${DOCKERFILE_PATH} \
     --target python-oracle \
