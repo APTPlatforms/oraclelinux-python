@@ -1,7 +1,7 @@
 BASE := oraclelinux:7-slim
 REPO := aptplatforms/oraclelinux-python
-PYTHON_VERSION := 3.7.6
-PYTHON_PIP_VERSION := 20.0.2
+PYTHON_VERSION := 3.7.7
+PYTHON_PIP_VERSION := 20.1.1
 ORA_VERSION := 19.5
 VERSION := 7-slim-py${PYTHON_VERSION}-oic${ORA_VERSION}
 

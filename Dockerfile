@@ -7,8 +7,8 @@
 # in a very clean runtime image that has as few unintended extras as possible.
 ARG PYPI_BUILD_DEPS="gcc gcc-c++"
 ARG PYPI_DEPS=""
-ARG PYTHON_VERSION=3.7.6
-ARG PYTHON_PIP_VERSION=20.0.2
+ARG PYTHON_VERSION=3.7.7
+ARG PYTHON_PIP_VERSION=20.1.1
 ARG ORA_VERSION=19.5
 
 
@@ -41,6 +41,7 @@ ARG SQLITE_DEPS="tcl"
 RUN : \
  && set -ex \
  && yum clean all \
+ && /usr/bin/ol_yum_configure.sh \
  && yum -y upgrade \
  && yum -y install $SYSTEM_DEPS $PYTHON_DEPS $SQLITE_DEPS \
  && yum clean all \
@@ -96,7 +97,7 @@ ARG PYTHON_BUILD_DEPS="gcc gcc-c++ bzip2-devel glibc-devel expat-devel libffi-de
                        xz-devel ncurses-devel readline-devel sqlite-devel openssl-devel make \
                        tk-devel libuuid-devel zlib-devel"
 ARG SQLITE_BUILD_DEPS="autoconf file pkgconfig ncurses-devel readline-devel glibc-devel tcl-devel"
-ARG SQLITE_VERSION=3290000
+ARG SQLITE_VERSION=3320300
 
 ENV PATH=$_bindir:$PATH
 
@@ -111,7 +112,7 @@ RUN : \
 # Install SQLite
 RUN : \
  && set -ex \
- && curl -sSLo sqlite.tar.gz "https://www.sqlite.org/2019/sqlite-autoconf-${SQLITE_VERSION}.tar.gz" \
+ && curl -sSLo sqlite.tar.gz "https://sqlite.org/2020/sqlite-autoconf-${SQLITE_VERSION}.tar.gz" \
  && mkdir -p /usr/src/sqlite \
  && tar -xzC /usr/src/sqlite --strip-components=1 -f sqlite.tar.gz \
  && rm sqlite.tar.gz
